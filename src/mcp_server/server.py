@@ -14,11 +14,13 @@ from prometheus_client import start_http_server
 
 from .tools.uptime import check_uptime
 from .tools.metadata import fetch_page_metadata
+from .tools.screenshot import screenshot_url
 
 mcp = FastMCP("observable-web-insights")
 
 mcp.tool()(check_uptime)
 mcp.tool()(fetch_page_metadata)
+mcp.tool()(screenshot_url)
 
 
 def main() -> None:
