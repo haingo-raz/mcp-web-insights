@@ -1,12 +1,3 @@
-"""
-Tool: fetch_page_metadata
-
-Given a URL, fetch the HTML and pull out the metadata a browser or search
-engine cares about: the <title>, the meta description, and Open Graph tags
-(og:title, og:image, etc. -- the stuff that builds link previews).
-
-"""
-
 from html.parser import HTMLParser
 
 import httpx
@@ -15,12 +6,7 @@ from ..instrument import instrument
 
 
 class _MetaExtractor(HTMLParser):
-    """A tiny HTML parser that collects <title> and <meta> tags.
-
-    HTMLParser fires callbacks as it walks the document. We override three:
-    handle_starttag (for <meta> and opening <title>), handle_endtag (to know
-    when <title> closes), and handle_data (the text inside <title>).
-    """
+    """HTMLParser subclass that collects <title> and <meta> tags."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -60,7 +46,7 @@ async def fetch_page_metadata(url: str) -> dict:
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
             resp = await client.get(url)
-            resp.raise_for_status()   # turn a 4xx/5xx into an exception here
+            resp.raise_for_status()
             html = resp.text
     except httpx.HTTPError as exc:
         return {"url": url, "title": None, "description": None,

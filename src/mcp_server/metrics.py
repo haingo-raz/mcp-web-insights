@@ -1,17 +1,3 @@
-"""
-Prometheus metrics for the Observable MCP server.
-
-A "metric" is a number Prometheus scrapes over HTTP on a schedule.
-We define the metric objects ONCE here (module-level) so every part of the
-app shares the same counters.
-
-Three metric types are used:
-- Counter:   only goes up (total calls, total errors). You .inc() it.
-- Histogram: records a distribution (e.g. request durations) into buckets,
-             so you can later ask "95th percentile latency".
-- Gauge:     goes up AND down (e.g. how many requests are in flight now).
-"""
-
 from prometheus_client import Counter, Histogram, Gauge
 
 TOOL_CALLS = Counter(

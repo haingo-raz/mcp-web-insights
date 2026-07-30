@@ -1,10 +1,3 @@
-"""
-Tool: check_uptime
-
-Given a URL, make an HTTP request and report whether the site is up, its
-status code, and how long it took. No browser needed, just an HTTP client.
-"""
-
 import time
 import httpx
 
@@ -28,7 +21,7 @@ async def check_uptime(url: str) -> dict:
         elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
         return {
             "url": url,
-            "up": resp.status_code < 400,   # 2xx/3xx = up, 4xx/5xx = down-ish
+            "up": resp.status_code < 400,  # 4xx/5xx treated as down
             "status_code": resp.status_code,
             "response_time_ms": elapsed_ms,
             "error": None,

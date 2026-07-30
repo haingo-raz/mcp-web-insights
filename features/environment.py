@@ -1,6 +1,5 @@
-"""behave hooks. Runs around scenarios."""
+"""behave environment hooks."""
 
 
 def before_all(context):
-    """Runs once before any scenario."""
     pass

@@ -1,4 +1,4 @@
-"""Unit tests for fetch_page_metadata: HTML responses mocked with respx."""
+"""Unit tests for fetch_page_metadata."""
 
 import httpx
 import respx
@@ -19,7 +19,7 @@ SAMPLE_HTML = """
 
 @respx.mock
 async def test_metadata_extracts_title_and_description():
-    """Title, description, and og: tags should be pulled from the HTML."""
+    """Title, description, and og: tags should be extracted from the HTML."""
     respx.get("https://fake.test").mock(
         return_value=httpx.Response(200, text=SAMPLE_HTML)
     )
@@ -34,7 +34,7 @@ async def test_metadata_extracts_title_and_description():
 
 @respx.mock
 async def test_metadata_handles_error_status():
-    """A 404 should raise_for_status internally and return an error dict."""
+    """A 404 response should return an error dict with title=None."""
     respx.get("https://fake.test").mock(return_value=httpx.Response(404))
 
     result = await fetch_page_metadata("https://fake.test")

@@ -1,4 +1,4 @@
-"""Unit tests for check_uptime: network mocked with respx, no real requests."""
+"""Unit tests for check_uptime."""
 
 import httpx
 import respx

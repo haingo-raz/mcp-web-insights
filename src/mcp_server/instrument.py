@@ -10,18 +10,13 @@ R = TypeVar("R")  # keeps the decorated function's return type intact for editor
 
 
 def instrument(tool_name: str) -> Callable[[Callable[..., Awaitable[R]]], Callable[..., Awaitable[R]]]:
-    """Return a decorator that records metrics for one tool.
-
-    Usage:
-        @instrument("check_uptime")
-        async def check_uptime(url: str) -> dict: ...
-    """
+    """Return a decorator that records Prometheus metrics for one tool."""
 
     def decorator(func: Callable[..., Awaitable[R]]) -> Callable[..., Awaitable[R]]:
-        @functools.wraps(func)  # preserves name/docstring so FastMCP sees the real tool
+        @functools.wraps(func)  # required so FastMCP's introspection sees the original name
         async def wrapper(*args, **kwargs) -> R:
-            ACTIVE_REQUESTS.inc()          # a request just started
-            start = time.perf_counter()    # high-resolution timer
+            ACTIVE_REQUESTS.inc()
+            start = time.perf_counter()
             status = "success"
             try:
                 return await func(*args, **kwargs)
@@ -32,7 +27,7 @@ def instrument(tool_name: str) -> Callable[[Callable[..., Awaitable[R]]], Callab
                 elapsed = time.perf_counter() - start
                 TOOL_DURATION.labels(tool=tool_name).observe(elapsed)
                 TOOL_CALLS.labels(tool=tool_name, status=status).inc()
-                ACTIVE_REQUESTS.dec()       # request finished
+                ACTIVE_REQUESTS.dec()
         return wrapper
 
     return decorator

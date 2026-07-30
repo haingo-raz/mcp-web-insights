@@ -1,32 +1,40 @@
 """
-Tool: screenshot_url
-
-Load a URL in a real headless Chrome browser (so JavaScript runs) and capture
-a PNG screenshot of the rendered page.
-
+Set CHROME_BIN and CHROME_DRIVER to override binary paths.
+Required in Docker where Chrome is installed at /usr/bin/chromium.
 """
 
 import asyncio
-import time
+import base64
+import os
+import tempfile
 from pathlib import Path
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 
 from ..instrument import instrument
 
-SCREENSHOT_DIR = Path("screenshots")
-
 
 def _capture(url: str, out_path: Path) -> None:
-    """Blocking Selenium work: launch Chrome, load page, save PNG."""
+    """Blocking Selenium call — must run in a thread, not the event loop."""
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1280,800")
 
-    driver = webdriver.Chrome(options=options)
+    chrome_bin = os.getenv("CHROME_BIN")
+    if chrome_bin:
+        options.binary_location = chrome_bin
+
+    chrome_driver = os.getenv("CHROME_DRIVER")
+    if chrome_driver:
+        service = Service(chrome_driver)
+        driver = webdriver.Chrome(service=service, options=options)
+    else:
+        driver = webdriver.Chrome(options=options)
+
     try:
         driver.get(url)
         driver.save_screenshot(str(out_path))
@@ -42,18 +50,19 @@ async def screenshot_url(url: str) -> dict:
         url: The full URL to screenshot, e.g. "https://example.com".
 
     Returns:
-        A dict with keys: url, screenshot_path, width, height, error.
+        A dict with keys: url, screenshot_base64 (PNG as base64 string),
+        width, height, error.
     """
-    SCREENSHOT_DIR.mkdir(exist_ok=True)
-
-    safe = "".join(c if c.isalnum() else "_" for c in url)[:60]
-    out_path = SCREENSHOT_DIR / f"{safe}_{int(time.time())}.png"
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        out_path = Path(tmp.name)
 
     try:
         await asyncio.to_thread(_capture, url, out_path)
+        with open(out_path, "rb") as f:
+            screenshot_base64 = base64.b64encode(f.read()).decode("utf-8")
         return {
             "url": url,
-            "screenshot_path": str(out_path),
+            "screenshot_base64": screenshot_base64,
             "width": 1280,
             "height": 800,
             "error": None,
@@ -61,8 +70,10 @@ async def screenshot_url(url: str) -> dict:
     except Exception as exc:
         return {
             "url": url,
-            "screenshot_path": None,
+            "screenshot_base64": None,
             "width": None,
             "height": None,
             "error": str(exc),
         }
+    finally:
+        out_path.unlink(missing_ok=True)
