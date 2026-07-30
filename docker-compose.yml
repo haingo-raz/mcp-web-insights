@@ -1,0 +1,25 @@
+services:
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      MCP_TRANSPORT: sse
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "8080"
+    ports:
+      - "8080:8080"
+      - "9000:9000"
+
+  web-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      MCP_SERVER_URL: http://mcp-server:8080
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+      SITE_PASSWORD: "${SITE_PASSWORD}"
+    depends_on:
+      - mcp-server
