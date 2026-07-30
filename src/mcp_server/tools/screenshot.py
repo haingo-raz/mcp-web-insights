@@ -9,15 +9,15 @@ import os
 import tempfile
 from pathlib import Path
 
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-
 from ..instrument import instrument
 
 
 def _capture(url: str, out_path: Path) -> None:
     """Blocking Selenium call — must run in a thread, not the event loop."""
+    from selenium import webdriver  # lazy: not needed at server startup
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.service import Service
+
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
