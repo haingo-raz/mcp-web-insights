@@ -2,6 +2,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface CapturedImage {
   data: string;
@@ -28,10 +30,25 @@ export default function ChatInterface() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [displayMessages]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 104) + "px";
+  }, [input]);
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      e.currentTarget.form?.requestSubmit();
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
@@ -143,7 +160,35 @@ export default function ChatInterface() {
                 </span>
               ) : (
                 <>
-                  <p className="whitespace-pre-wrap text-sm">{msg.text}</p>
+                  {msg.role === "user" ? (
+                    <p className="whitespace-pre-wrap text-sm">{msg.text}</p>
+                  ) : (
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        p: ({ children }) => <p className="text-sm mb-2 last:mb-0">{children}</p>,
+                        h1: ({ children }) => <h1 className="text-base font-semibold mb-2 mt-1">{children}</h1>,
+                        h2: ({ children }) => <h2 className="text-sm font-semibold mb-1 mt-1">{children}</h2>,
+                        h3: ({ children }) => <h3 className="text-sm font-semibold mb-1 mt-1">{children}</h3>,
+                        ul: ({ children }) => <ul className="text-sm list-disc pl-4 mb-2 space-y-0.5">{children}</ul>,
+                        ol: ({ children }) => <ol className="text-sm list-decimal pl-4 mb-2 space-y-0.5">{children}</ol>,
+                        li: ({ children }) => <li>{children}</li>,
+                        code: ({ children, className }) =>
+                          className ? (
+                            <code className="block bg-black/10 dark:bg-white/10 rounded p-2 overflow-x-auto text-xs font-mono my-2 whitespace-pre">{children}</code>
+                          ) : (
+                            <code className="bg-black/10 dark:bg-white/10 rounded px-1 text-xs font-mono">{children}</code>
+                          ),
+                        pre: ({ children }) => <pre className="my-0">{children}</pre>,
+                        blockquote: ({ children }) => <blockquote className="border-l-2 border-current pl-3 opacity-70 my-2">{children}</blockquote>,
+                        a: ({ href, children }) => <a href={href} className="underline" target="_blank" rel="noopener noreferrer">{children}</a>,
+                        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                        hr: () => <hr className="border-current opacity-30 my-3" />,
+                      }}
+                    >
+                      {msg.text}
+                    </ReactMarkdown>
+                  )}
                   {msg.images && msg.images.length > 0 && (
                     <div className="mt-3 space-y-2">
                       {msg.images.map((img, j) => (
@@ -169,13 +214,15 @@ export default function ChatInterface() {
         onSubmit={handleSubmit}
         className="flex gap-2 pt-4 border-t border-gray-200 dark:border-gray-700"
       >
-        <input
-          type="text"
+        <textarea
+          ref={textareaRef}
+          rows={1}
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Ask about any website..."
           disabled={isLoading}
-          className="flex-1 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          className="flex-1 resize-none overflow-y-auto rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
         />
         <button
           type="submit"
