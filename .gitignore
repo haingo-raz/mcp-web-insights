@@ -8,8 +8,11 @@ venv/
 .ruff_cache/
 
 .env
+.env.*
 *.pem
 
 .DS_Store
 Thumbs.db
 screenshots/
+
+*/node_modules/
