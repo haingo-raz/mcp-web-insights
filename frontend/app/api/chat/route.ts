@@ -3,7 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -12,10 +12,7 @@ interface CapturedImage {
   mimeType: string;
 }
 
-interface ChatResponse {
-  text: string;
-  images: CapturedImage[];
-}
+type SendFn = (event: object) => void;
 
 async function createMcpClient(): Promise<Client> {
   const serverUrl = process.env.MCP_SERVER_URL;
@@ -29,11 +26,22 @@ async function createMcpClient(): Promise<Client> {
   return client;
 }
 
+function toolCallLabel(name: string, input: unknown): string {
+  const args = input as Record<string, unknown>;
+  const url = typeof args?.url === "string" ? args.url : null;
+  return url ? `${name} → ${url}` : name;
+}
+
 async function executeToolCall(
   toolUse: Anthropic.Messages.ToolUseBlock,
   mcpClient: Client,
-  images: CapturedImage[]
+  images: CapturedImage[],
+  toolsUsed: string[],
+  send: SendFn
 ): Promise<Anthropic.Messages.ToolResultBlockParam> {
+  send({ type: "tool_call", label: toolCallLabel(toolUse.name, toolUse.input) });
+  toolsUsed.push(toolUse.name);
+
   const result = await mcpClient.callTool({
     name: toolUse.name,
     arguments: toolUse.input as Record<string, unknown>,
@@ -48,7 +56,6 @@ async function executeToolCall(
   if (toolUse.name === "screenshot_url") {
     const parsed = JSON.parse(rawText) as {
       screenshot_base64?: string;
-      url?: string;
       error?: string;
     };
 
@@ -88,7 +95,9 @@ async function runAgentLoop(
   messages: Anthropic.Messages.MessageParam[],
   tools: Anthropic.Messages.Tool[],
   mcpClient: Client,
-  images: CapturedImage[]
+  images: CapturedImage[],
+  toolsUsed: string[],
+  send: SendFn
 ): Promise<string> {
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-5",
@@ -107,7 +116,9 @@ async function runAgentLoop(
   );
 
   const toolResults = await Promise.all(
-    toolUseBlocks.map((tu) => executeToolCall(tu, mcpClient, images))
+    toolUseBlocks.map((tu) =>
+      executeToolCall(tu, mcpClient, images, toolsUsed, send)
+    )
   );
 
   return runAgentLoop(
@@ -118,35 +129,76 @@ async function runAgentLoop(
     ],
     tools,
     mcpClient,
-    images
+    images,
+    toolsUsed,
+    send
   );
 }
 
 export async function POST(request: Request): Promise<Response> {
-  let mcpClient: Client | null = null;
+  const encoder = new TextEncoder();
 
-  try {
-    const { messages } = (await request.json()) as {
-      messages: Anthropic.Messages.MessageParam[];
-    };
+  const body = new ReadableStream({
+    async start(controller) {
+      const send: SendFn = (event) => {
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
+        );
+      };
 
-    mcpClient = await createMcpClient();
-    const { tools: mcpTools } = await mcpClient.listTools();
+      let mcpClient: Client | null = null;
+      try {
+        const { messages } = (await request.json()) as {
+          messages: Anthropic.Messages.MessageParam[];
+        };
 
-    const anthropicTools: Anthropic.Messages.Tool[] = mcpTools.map((t) => ({
-      name: t.name,
-      description: t.description ?? "",
-      input_schema: t.inputSchema as Anthropic.Messages.Tool["input_schema"],
-    }));
+        mcpClient = await createMcpClient();
+        const { tools: mcpTools } = await mcpClient.listTools();
 
-    const images: CapturedImage[] = [];
-    const text = await runAgentLoop(messages, anthropicTools, mcpClient, images);
+        const anthropicTools: Anthropic.Messages.Tool[] = mcpTools.map(
+          (t) => ({
+            name: t.name,
+            description: t.description ?? "",
+            input_schema:
+              t.inputSchema as Anthropic.Messages.Tool["input_schema"],
+          })
+        );
 
-    return Response.json({ text, images } satisfies ChatResponse);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return Response.json({ error: message }, { status: 500 });
-  } finally {
-    await mcpClient?.close();
-  }
+        const images: CapturedImage[] = [];
+        const toolsUsed: string[] = [];
+
+        const text = await runAgentLoop(
+          messages,
+          anthropicTools,
+          mcpClient,
+          images,
+          toolsUsed,
+          send
+        );
+
+        send({
+          type: "done",
+          text,
+          images,
+          tools_used: [...new Set(toolsUsed)],
+        });
+      } catch (err) {
+        send({
+          type: "error",
+          message: err instanceof Error ? err.message : "Unknown error",
+        });
+      } finally {
+        await mcpClient?.close();
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(body, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 }

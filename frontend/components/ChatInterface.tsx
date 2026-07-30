@@ -10,18 +10,24 @@ interface CapturedImage {
   mimeType: string;
 }
 
-/** Message shown in the UI — may include images for screenshot results. */
 interface DisplayMessage {
   role: "user" | "assistant";
   text: string;
   images?: CapturedImage[];
+  toolsUsed?: string[];
+  thinkingSteps?: string[];
   isLoading?: boolean;
 }
 
-/** Trimmed message sent to /api/chat — only role + text content. */
 interface ApiMessage {
   role: "user" | "assistant";
   content: string;
+}
+
+function formatToolsUsed(tools: string[]): string {
+  if (tools.length === 1) return `Tools used: ${tools[0]}`;
+  if (tools.length === 2) return `Tools used: ${tools[0]} and ${tools[1]}`;
+  return `Tools used: ${tools.slice(0, -1).join(", ")}, and ${tools[tools.length - 1]}`;
 }
 
 export default function ChatInterface() {
@@ -62,7 +68,7 @@ export default function ChatInterface() {
     setDisplayMessages((prev) => [
       ...prev,
       { role: "user", text },
-      { role: "assistant", text: "", isLoading: true },
+      { role: "assistant", text: "", isLoading: true, thinkingSteps: [] },
     ]);
     setApiHistory(updatedHistory);
     setInput("");
@@ -75,34 +81,69 @@ export default function ChatInterface() {
         body: JSON.stringify({ messages: updatedHistory }),
       });
 
-      if (!res.ok) {
-        const err = (await res.json()) as { error?: string };
-        throw new Error(err.error ?? `HTTP ${res.status}`);
+      if (!res.ok || !res.body) {
+        throw new Error(`HTTP ${res.status}`);
       }
 
-      const data = (await res.json()) as {
-        text: string;
-        images: CapturedImage[];
-        error?: string;
-      };
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-      if (data.error) throw new Error(data.error);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      setApiHistory((prev) => [
-        ...prev,
-        { role: "assistant", content: data.text },
-      ]);
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
 
-      setDisplayMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
-          role: "assistant",
-          text: data.text,
-          images: data.images,
-          isLoading: false,
-        };
-        return updated;
-      });
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          let event: Record<string, unknown>;
+          try {
+            event = JSON.parse(line.slice(6)) as Record<string, unknown>;
+          } catch {
+            continue;
+          }
+
+          if (event.type === "tool_call") {
+            setDisplayMessages((prev) => {
+              const updated = [...prev];
+              const last = updated[updated.length - 1];
+              updated[updated.length - 1] = {
+                ...last,
+                thinkingSteps: [
+                  ...(last.thinkingSteps ?? []),
+                  event.label as string,
+                ],
+              };
+              return updated;
+            });
+          } else if (event.type === "done") {
+            const finalText = event.text as string;
+            const images = event.images as CapturedImage[];
+            const toolsUsed = event.tools_used as string[];
+
+            setApiHistory((prev) => [
+              ...prev,
+              { role: "assistant", content: finalText },
+            ]);
+            setDisplayMessages((prev) => {
+              const updated = [...prev];
+              updated[updated.length - 1] = {
+                role: "assistant",
+                text: finalText,
+                images,
+                toolsUsed,
+                isLoading: false,
+              };
+              return updated;
+            });
+          } else if (event.type === "error") {
+            throw new Error(event.message as string);
+          }
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       setDisplayMessages((prev) => {
@@ -153,11 +194,29 @@ export default function ChatInterface() {
               }`}
             >
               {msg.isLoading ? (
-                <span className="flex gap-1">
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                </span>
+                <div>
+                  {msg.thinkingSteps && msg.thinkingSteps.length > 0 ? (
+                    <div className="space-y-1">
+                      {msg.thinkingSteps.map((step, j) => (
+                        <p key={j} className="text-xs text-gray-500 dark:text-gray-400 flex items-start gap-1.5">
+                          <span className="mt-px opacity-50">→</span>
+                          <span>{step}</span>
+                        </p>
+                      ))}
+                      <span className="flex gap-1 mt-2">
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" />
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="flex gap-1">
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+                    </span>
+                  )}
+                </div>
               ) : (
                 <>
                   {msg.role === "user" ? (
@@ -200,6 +259,11 @@ export default function ChatInterface() {
                         />
                       ))}
                     </div>
+                  )}
+                  {msg.toolsUsed && msg.toolsUsed.length > 0 && (
+                    <p className="text-[11px] text-gray-400/50 dark:text-gray-500/50 mt-2 pt-1.5 border-t border-gray-200/40 dark:border-gray-600/40">
+                      {formatToolsUsed(msg.toolsUsed)}
+                    </p>
                   )}
                 </>
               )}
