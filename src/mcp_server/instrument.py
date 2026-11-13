@@ -1,10 +1,11 @@
 """A decorator that wraps a tool function with Prometheus bookkeeping."""
 
-import time
 import functools
-from typing import Awaitable, Callable, TypeVar
+import time
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 
-from .metrics import TOOL_CALLS, TOOL_DURATION, ACTIVE_REQUESTS
+from .metrics import ACTIVE_REQUESTS, TOOL_CALLS, TOOL_DURATION
 
 R = TypeVar("R")  # keeps the decorated function's return type intact for editors
 

@@ -58,8 +58,8 @@ async def screenshot_url(url: str) -> dict:
 
     try:
         await asyncio.to_thread(_capture, url, out_path)
-        with open(out_path, "rb") as f:
-            screenshot_base64 = base64.b64encode(f.read()).decode("utf-8")
+        image_bytes = await asyncio.to_thread(out_path.read_bytes)
+        screenshot_base64 = base64.b64encode(image_bytes).decode("utf-8")
         return {
             "url": url,
             "screenshot_base64": screenshot_base64,
@@ -76,4 +76,4 @@ async def screenshot_url(url: str) -> dict:
             "error": str(exc),
         }
     finally:
-        out_path.unlink(missing_ok=True)
+        await asyncio.to_thread(out_path.unlink, missing_ok=True)

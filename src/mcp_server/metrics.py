@@ -1,4 +1,4 @@
-from prometheus_client import Counter, Histogram, Gauge
+from prometheus_client import Counter, Gauge, Histogram
 
 TOOL_CALLS = Counter(
     "mcp_tool_calls_total",

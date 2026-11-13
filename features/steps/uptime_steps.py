@@ -4,8 +4,7 @@ import asyncio
 
 import httpx
 import respx
-
-from behave import given, when, then
+from behave import given, then, when
 
 from mcp_server.tools.uptime import check_uptime
 

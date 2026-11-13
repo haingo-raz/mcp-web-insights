@@ -9,9 +9,9 @@ import os
 from mcp.server.fastmcp import FastMCP
 from prometheus_client import start_http_server
 
-from .tools.uptime import check_uptime
 from .tools.metadata import fetch_page_metadata
 from .tools.screenshot import screenshot_url
+from .tools.uptime import check_uptime
 
 host = os.getenv("MCP_HOST", "127.0.0.1")
 port = int(os.getenv("MCP_PORT", "8080"))
