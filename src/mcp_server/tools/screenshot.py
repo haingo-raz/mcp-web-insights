@@ -67,7 +67,7 @@ async def screenshot_url(url: str) -> dict:
             "height": 800,
             "error": None,
         }
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return {
             "url": url,
             "screenshot_base64": None,
